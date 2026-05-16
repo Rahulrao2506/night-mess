@@ -1,115 +1,177 @@
-"use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import { Eye, EyeOff, Utensils } from "lucide-react";
+'use client';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
-  const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", rollNo: "", password: "" });
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    rollNumber: '',
+    password: ''
+  });
 
-  const handle = async () => {
-    if (!form.email || !form.password) { setError("Please fill all fields"); return; }
-    if (!isLogin && !form.rollNo) { setError("Roll number is required"); return; }
+  const API = process.env.NEXT_PUBLIC_API_URL;
+
+  const handleSubmit = async () => {
     setLoading(true);
-    setError("");
-    // Simulate auth — replace with real API later
-    await new Promise(r => setTimeout(r, 1200));
+    setError('');
+    try {
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const body = isLogin
+        ? { email: form.email, password: form.password }
+        : { name: form.name, email: form.email, rollNumber: form.rollNumber, password: form.password };
+
+      const res = await fetch(`${API}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        setError(data.message || 'Something went wrong');
+        setLoading(false);
+        return;
+      }
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+
+      if (data.user.role === 'admin') {
+        router.push('/admin');
+      } else {
+        router.push('/');
+      }
+    } catch (err) {
+      setError('Network error — is the server running?');
+    }
     setLoading(false);
-    // Store basic user info
-    localStorage.setItem("nm_user", JSON.stringify({ name: form.name || "Rahul Yadav", email: form.email, rollNo: form.rollNo || "21BCE1234" }));
-    router.push("/");
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 20px", fontFamily: "'DM Sans', sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+    <div style={{
+      minHeight: '100vh',
+      background: '#0a0a0a',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: 'sans-serif'
+    }}>
+      <div style={{
+        background: '#1a1a1a',
+        borderRadius: '16px',
+        padding: '40px',
+        width: '100%',
+        maxWidth: '400px',
+        border: '1px solid #2a2a2a'
+      }}>
+        <h1 style={{ color: '#ff6b35', textAlign: 'center', marginBottom: '8px' }}>
+          🍽️ Night Mess
+        </h1>
+        <p style={{ color: '#888', textAlign: 'center', marginBottom: '32px' }}>
+          {isLogin ? 'Sign in to order food' : 'Create your account'}
+        </p>
 
-      {/* Logo */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} style={{ textAlign: "center", marginBottom: 40 }}>
-        <div style={{ width: 64, height: 64, background: "linear-gradient(135deg, #ff6b35, #ff9a3c)", borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-          <Utensils size={28} color="#fff" />
-        </div>
-        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 28, fontWeight: 800, background: "linear-gradient(135deg, #ff6b35, #ff9a3c)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-          Night Mess
-        </div>
-        <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>VIT Hostel Food Ordering</div>
-      </motion.div>
-
-      {/* Card */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-        style={{ width: "100%", maxWidth: 380, background: "#111", border: "1px solid #1a1a1a", borderRadius: 24, padding: "28px 24px" }}>
-
-        {/* Toggle */}
-        <div style={{ display: "flex", background: "#0a0a0a", borderRadius: 14, padding: 4, marginBottom: 24 }}>
-          {["Login", "Register"].map(t => (
-            <button key={t} onClick={() => { setIsLogin(t === "Login"); setError(""); }}
-              style={{ flex: 1, padding: "10px", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.2s",
-                background: (isLogin ? "Login" : "Register") === t ? "#ff6b35" : "transparent",
-                color: (isLogin ? "Login" : "Register") === t ? "#fff" : "#555" }}>
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {/* Fields */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {!isLogin && (
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-              placeholder="Full Name" style={inputStyle} />
-          )}
-          <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-            placeholder="Email or Roll Number" type="email" style={inputStyle} />
-          {!isLogin && (
-            <input value={form.rollNo} onChange={e => setForm({ ...form, rollNo: e.target.value })}
-              placeholder="Roll Number (e.g. 21BCE1234)" style={inputStyle} />
-          )}
-          <div style={{ position: "relative" }}>
-            <input value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
-              placeholder="Password" type={showPass ? "text" : "password"} style={{ ...inputStyle, paddingRight: 44 }} />
-            <button onClick={() => setShowPass(!showPass)}
-              style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#555", cursor: "pointer" }}>
-              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </div>
-
-        {error && <div style={{ fontSize: 12, color: "#ef4444", marginTop: 10, textAlign: "center" }}>{error}</div>}
-
-        <button onClick={handle} disabled={loading}
-          style={{ width: "100%", marginTop: 20, background: loading ? "#333" : "linear-gradient(135deg, #ff6b35, #ff9a3c)", border: "none", borderRadius: 14, padding: "15px", color: "#fff", fontWeight: 700, fontSize: 15, cursor: loading ? "not-allowed" : "pointer", transition: "all 0.2s" }}>
-          {loading ? "Please wait..." : isLogin ? "Login →" : "Create Account →"}
-        </button>
-
-        {isLogin && (
-          <div style={{ textAlign: "center", marginTop: 16, fontSize: 12, color: "#555" }}>
-            Demo: use any email + password
+        {error && (
+          <div style={{
+            background: '#ff000022',
+            border: '1px solid #ff0000',
+            color: '#ff6b6b',
+            padding: '12px',
+            borderRadius: '8px',
+            marginBottom: '16px',
+            fontSize: '14px'
+          }}>
+            {error}
           </div>
         )}
-      </motion.div>
 
-      {/* Admin link */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
-        style={{ marginTop: 24, fontSize: 13, color: "#444" }}>
-        Mess staff?{" "}
-        <a href="/admin" style={{ color: "#ff6b35", textDecoration: "none", fontWeight: 600 }}>Admin Login →</a>
-      </motion.div>
+        {!isLogin && (
+          <>
+            <label style={{ color: '#888', fontSize: '13px' }}>Full Name</label>
+            <input
+              type="text"
+              placeholder="Rahul Yadav"
+              value={form.name}
+              onChange={e => setForm({...form, name: e.target.value})}
+              style={inputStyle}
+            />
+            <label style={{ color: '#888', fontSize: '13px' }}>Roll Number</label>
+            <input
+              type="text"
+              placeholder="22BCE1234"
+              value={form.rollNumber}
+              onChange={e => setForm({...form, rollNumber: e.target.value})}
+              style={inputStyle}
+            />
+          </>
+        )}
+
+        <label style={{ color: '#888', fontSize: '13px' }}>Email</label>
+        <input
+          type="email"
+          placeholder="rahul@vit.ac.in"
+          value={form.email}
+          onChange={e => setForm({...form, email: e.target.value})}
+          style={inputStyle}
+        />
+
+        <label style={{ color: '#888', fontSize: '13px' }}>Password</label>
+        <input
+          type="password"
+          placeholder="••••••••"
+          value={form.password}
+          onChange={e => setForm({...form, password: e.target.value})}
+          style={inputStyle}
+        />
+
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '14px',
+            background: loading ? '#555' : '#ff6b35',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            marginTop: '8px'
+          }}
+        >
+          {loading ? 'Please wait...' : isLogin ? 'Sign In' : 'Create Account'}
+        </button>
+
+        <p style={{ color: '#888', textAlign: 'center', marginTop: '24px', fontSize: '14px' }}>
+          {isLogin ? "Don't have an account?" : 'Already have an account?'}
+          <span
+            onClick={() => { setIsLogin(!isLogin); setError(''); }}
+            style={{ color: '#ff6b35', cursor: 'pointer', marginLeft: '6px' }}
+          >
+            {isLogin ? 'Register' : 'Sign In'}
+          </span>
+        </p>
+      </div>
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  background: "#0a0a0a",
-  border: "1px solid #222",
-  borderRadius: 12,
-  padding: "13px 14px",
-  color: "#fff",
-  fontSize: 14,
-  outline: "none",
-  boxSizing: "border-box",
+const inputStyle = {
+  width: '100%',
+  padding: '12px',
+  background: '#2a2a2a',
+  border: '1px solid #333',
+  borderRadius: '8px',
+  color: 'white',
+  fontSize: '15px',
+  marginBottom: '16px',
+  marginTop: '4px',
+  boxSizing: 'border-box' as const
 };
