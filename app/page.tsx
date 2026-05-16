@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ShoppingCart, Star, Clock, Flame, Search, X, Plus, Minus, Bell, ChevronRight, Zap, TrendingUp, Menu, LogOut } from "lucide-react";
+import { ShoppingCart, Star, Clock, Flame, Search, X, Plus, Minus, Bell, ChevronRight, Zap, TrendingUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const MENU_ITEMS = [
@@ -23,20 +23,73 @@ export default function NightMess() {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [crowdLevel] = useState<"Low" | "Medium" | "High">("Low");
-  const [waitTime] = useState(12);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [currentTime, setCurrentTime] = useState("");
+  const [user, setUser] = useState<any>(null);
+  const [crowdLevel, setCrowdLevel] = useState<"Low" | "Medium" | "High">("Low");
+  const [waitTime, setWaitTime] = useState(12);
+  const [notifications, setNotifications] = useState<string[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [orderToken, setOrderToken] = useState("");
+
+  const API = 'https://night-mess-api.onrender.com';
 
   useEffect(() => {
     const tick = () => {
       const now = new Date();
       setCurrentTime(now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+      // AI Rush Predictor — based on time of day
+      const hour = now.getHours();
+      if ((hour >= 20 && hour <= 22) || (hour >= 7 && hour <= 9)) {
+        setCrowdLevel("High");
+        setWaitTime(25);
+      } else if ((hour >= 19 && hour < 20) || (hour >= 9 && hour <= 11)) {
+        setCrowdLevel("Medium");
+        setWaitTime(15);
+      } else {
+        setCrowdLevel("Low");
+        setWaitTime(8);
+      }
     };
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('user');
+    if (stored) setUser(JSON.parse(stored));
+  }, []);
+
+  // Poll for order status notifications every 15 seconds
+  useEffect(() => {
+    if (!user) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const checkOrders = async () => {
+      try {
+        const res = await fetch(`${API}/api/orders/my`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.orders) {
+          data.orders.forEach((order: any) => {
+            if (order.status === 'ready') {
+              const msg = `🎉 Token #${order.tokenNumber} is READY for pickup!`;
+              setNotifications(prev =>
+                prev.includes(msg) ? prev : [msg, ...prev]
+              );
+            }
+          });
+        }
+      } catch (err) {}
+    };
+
+    checkOrders();
+    const interval = setInterval(checkOrders, 15000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const filtered = MENU_ITEMS.filter(item =>
     (category === "All" || item.category === category) &&
@@ -62,31 +115,121 @@ export default function NightMess() {
 
   const cartTotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
   const cartCount = cart.reduce((sum, c) => sum + c.qty, 0);
-
   const crowdColor = { Low: "#22c55e", Medium: "#f59e0b", High: "#ef4444" }[crowdLevel];
 
-  const placeOrder = () => {
+  const placeOrder = async () => {
     if (cart.length === 0) return;
-    setOrderPlaced(true);
-    setCart([]);
-    setCartOpen(false);
-    setTimeout(() => setOrderPlaced(false), 5000);
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      window.location.href = '/login';
+      return;
+    }
+
+    try {
+      const items = cart.map(c => ({
+        name: c.name,
+        price: c.price,
+        quantity: c.qty,
+        prepTime: MENU_ITEMS.find(m => m.id === c.id)?.time || 10
+      }));
+
+      const res = await fetch(`${API}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ items, totalAmount: cartTotal })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setOrderToken(`#NM${data.order.tokenNumber}`);
+        setOrderPlaced(true);
+        setCart([]);
+        setCartOpen(false);
+        setTimeout(() => setOrderPlaced(false), 5000);
+      } else {
+        alert('Order failed: ' + data.message);
+      }
+    } catch (err) {
+      alert('Network error placing order');
+    }
   };
 
   return (
     <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 
-      {/* Header */}
+      {/* Header — no logout icon here, it's in the navbar from layout.tsx */}
       <header style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(10,10,10,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, background: "linear-gradient(135deg, #ff6b35, #ff9a3c)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Night Mess</div>
-          <div style={{ fontSize: 12, color: "#666", marginTop: 1 }}>Welcome back, Rahul Yadav 👋</div>
+        <div style={{ cursor: 'pointer' }} onClick={() => window.location.href = '/'}>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, background: "linear-gradient(135deg, #ff6b35, #ff9a3c)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            🍽️ Night Mess
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginTop: 1 }}>
+            Welcome back, {user?.name || 'Guest'} 👋
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ fontSize: 13, color: "#888", background: "#111", padding: "6px 12px", borderRadius: 20, border: "1px solid #222" }}>{currentTime}</div>
-          <button style={{ background: "none", border: "none", color: "#666", cursor: "pointer" }}><Bell size={20} /></button>
-          <button style={{ background: "none", border: "none", color: "#666", cursor: "pointer" }}><LogOut size={18} /></button>
+          
+          {/* Notification Bell */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              style={{ background: "none", border: "none", color: notifications.length > 0 ? "#ff6b35" : "#666", cursor: "pointer", position: 'relative' }}>
+              <Bell size={20} />
+              {notifications.length > 0 && (
+                <span style={{
+                  position: 'absolute', top: -4, right: -4,
+                  background: '#ff6b35', borderRadius: '50%',
+                  width: 16, height: 16, fontSize: 10,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'white', fontWeight: 'bold'
+                }}>
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+
+            {/* Notification Dropdown */}
+            {showNotifications && (
+              <div style={{
+                position: 'absolute', right: 0, top: 32,
+                background: '#1a1a1a', border: '1px solid #2a2a2a',
+                borderRadius: 12, padding: 12, minWidth: 260,
+                zIndex: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#ff6b35', marginBottom: 8 }}>
+                  Notifications
+                </div>
+                {notifications.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#666', padding: '8px 0' }}>
+                    No notifications yet
+                  </div>
+                ) : (
+                  notifications.map((n, i) => (
+                    <div key={i} style={{
+                      fontSize: 12, color: '#fff', padding: '8px 0',
+                      borderBottom: i < notifications.length - 1 ? '1px solid #2a2a2a' : 'none'
+                    }}>
+                      {n}
+                    </div>
+                  ))
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    onClick={() => setNotifications([])}
+                    style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer', marginTop: 8 }}>
+                    Clear all
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -97,7 +240,7 @@ export default function NightMess() {
           {orderPlaced && (
             <motion.div initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}
               style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", zIndex: 100, background: "#22c55e", color: "#fff", padding: "14px 24px", borderRadius: 16, fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 10, boxShadow: "0 8px 32px rgba(34,197,94,0.4)", whiteSpace: "nowrap" }}>
-              🎉 Order placed! Your token is #NM042
+              🎉 Order placed! Your token is {orderToken}
             </motion.div>
           )}
         </AnimatePresence>
@@ -150,7 +293,6 @@ export default function NightMess() {
               return (
                 <motion.div key={item.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }}
                   style={{ background: "#111", border: "1px solid #1a1a1a", borderRadius: 18, overflow: "hidden", position: "relative", opacity: item.stock ? 1 : 0.5 }}>
-                  {/* Emoji area */}
                   <div style={{ background: "#161616", height: 90, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 44, position: "relative" }}>
                     {item.emoji}
                     {item.popular && (
@@ -162,7 +304,6 @@ export default function NightMess() {
                       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#ef4444" }}>OUT OF STOCK</div>
                     )}
                   </div>
-
                   <div style={{ padding: "12px 12px 14px" }}>
                     <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, lineHeight: 1.3 }}>{item.name}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -173,7 +314,6 @@ export default function NightMess() {
                         <Clock size={10} /> {item.time}m
                       </span>
                     </div>
-
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <span style={{ fontSize: 15, fontWeight: 700, color: "#ff9a3c" }}>₹{item.price}</span>
                       {item.stock && (
