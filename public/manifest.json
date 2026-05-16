@@ -1,0 +1,36 @@
+{
+  "name": "Night Mess - VIT Hostel Food",
+  "short_name": "Night Mess",
+  "description": "Order food from your hostel mess without standing in queue",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#ff6b35",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "View Menu",
+      "url": "/",
+      "description": "Browse food items"
+    },
+    {
+      "name": "Admin Panel",
+      "url": "/admin",
+      "description": "Manage orders"
+    }
+  ]
+}
