@@ -31,6 +31,7 @@ export default function NightMess() {
   const [notifications, setNotifications] = useState<string[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [orderToken, setOrderToken] = useState("");
+  const [seenOrders, setSeenOrders] = useState<Set<string>>(new Set());
 
   const API = 'https://night-mess-api.onrender.com';
 
@@ -38,7 +39,6 @@ export default function NightMess() {
     const tick = () => {
       const now = new Date();
       setCurrentTime(now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
-      // AI Rush Predictor — based on time of day
       const hour = now.getHours();
       if ((hour >= 20 && hour <= 22) || (hour >= 7 && hour <= 9)) {
         setCrowdLevel("High");
@@ -58,14 +58,23 @@ export default function NightMess() {
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
-    if (stored) setUser(JSON.parse(stored));
+    if (stored) {
+      setUser(JSON.parse(stored));
+    }
+    // Clear notifications when user changes
+    setNotifications([]);
+    setSeenOrders(new Set());
   }, []);
 
-  // Poll for order status notifications every 15 seconds
+  // Poll for THIS user's order notifications only
   useEffect(() => {
     if (!user) return;
     const token = localStorage.getItem('token');
     if (!token) return;
+
+    // Clear everything when user changes
+    setNotifications([]);
+    setSeenOrders(new Set());
 
     const checkOrders = async () => {
       try {
@@ -74,21 +83,30 @@ export default function NightMess() {
         });
         const data = await res.json();
         if (data.success && data.orders) {
+          const newNotifs: string[] = [];
+          const newSeen = new Set(seenOrders);
+
           data.orders.forEach((order: any) => {
-            if (order.status === 'ready') {
-              const msg = `🎉 Token #${order.tokenNumber} is READY for pickup!`;
-              setNotifications(prev =>
-                prev.includes(msg) ? prev : [msg, ...prev]
-              );
+            // Only notify for ready orders not already seen
+            if (order.status === 'ready' && !seenOrders.has(order._id)) {
+              newNotifs.push(`🎉 Token #${order.tokenNumber} is READY for pickup!`);
+              newSeen.add(order._id);
             }
           });
+
+          if (newNotifs.length > 0) {
+            setSeenOrders(newSeen);
+            setNotifications(prev => [...newNotifs, ...prev]);
+          }
         }
       } catch (err) {}
     };
 
     checkOrders();
     const interval = setInterval(checkOrders, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+    };
   }, [user]);
 
   const filtered = MENU_ITEMS.filter(item =>
@@ -120,11 +138,7 @@ export default function NightMess() {
   const placeOrder = async () => {
     if (cart.length === 0) return;
     const token = localStorage.getItem('token');
-
-    if (!token) {
-      window.location.href = '/login';
-      return;
-    }
+    if (!token) { window.location.href = '/login'; return; }
 
     try {
       const items = cart.map(c => ({
@@ -163,7 +177,6 @@ export default function NightMess() {
     <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 
-      {/* Header — no logout icon here, it's in the navbar from layout.tsx */}
       <header style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(10,10,10,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ cursor: 'pointer' }} onClick={() => window.location.href = '/'}>
           <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, background: "linear-gradient(135deg, #ff6b35, #ff9a3c)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
@@ -175,7 +188,7 @@ export default function NightMess() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ fontSize: 13, color: "#888", background: "#111", padding: "6px 12px", borderRadius: 20, border: "1px solid #222" }}>{currentTime}</div>
-          
+
           {/* Notification Bell */}
           <div style={{ position: 'relative' }}>
             <button
@@ -195,7 +208,6 @@ export default function NightMess() {
               )}
             </button>
 
-            {/* Notification Dropdown */}
             {showNotifications && (
               <div style={{
                 position: 'absolute', right: 0, top: 32,
@@ -204,7 +216,7 @@ export default function NightMess() {
                 zIndex: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
               }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#ff6b35', marginBottom: 8 }}>
-                  Notifications
+                  Your Notifications
                 </div>
                 {notifications.length === 0 ? (
                   <div style={{ fontSize: 12, color: '#666', padding: '8px 0' }}>
@@ -222,7 +234,7 @@ export default function NightMess() {
                 )}
                 {notifications.length > 0 && (
                   <button
-                    onClick={() => setNotifications([])}
+                    onClick={() => { setNotifications([]); setSeenOrders(new Set()); }}
                     style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer', marginTop: 8 }}>
                     Clear all
                   </button>
@@ -235,7 +247,6 @@ export default function NightMess() {
 
       <main style={{ maxWidth: 480, margin: "0 auto", padding: "0 16px 100px" }}>
 
-        {/* Order Placed Toast */}
         <AnimatePresence>
           {orderPlaced && (
             <motion.div initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}

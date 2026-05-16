@@ -98,7 +98,7 @@ export default function LoginPage() {
             <label style={{ color: '#888', fontSize: '13px' }}>Full Name</label>
             <input
               type="text"
-              placeholder="Rahul Yadav"
+              placeholder="Your Name"
               value={form.name}
               onChange={e => setForm({...form, name: e.target.value})}
               style={inputStyle}
@@ -106,7 +106,7 @@ export default function LoginPage() {
             <label style={{ color: '#888', fontSize: '13px' }}>Roll Number</label>
             <input
               type="text"
-              placeholder="22BCE1234"
+              placeholder="24BCE1234"
               value={form.rollNumber}
               onChange={e => setForm({...form, rollNumber: e.target.value})}
               style={inputStyle}
@@ -117,7 +117,7 @@ export default function LoginPage() {
         <label style={{ color: '#888', fontSize: '13px' }}>Email</label>
         <input
           type="email"
-          placeholder="rahul@vit.ac.in"
+          placeholder="yourname@vit.ac.in"
           value={form.email}
           onChange={e => setForm({...form, email: e.target.value})}
           style={inputStyle}
