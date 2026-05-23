@@ -53,13 +53,11 @@ export default function AdminPage() {
     router.push("/admin/login");
   };
 
-  // ── Fetch orders ──
+  // ── Fetch orders — no token needed, admin session handles auth ──
   const fetchOrders = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) { window.location.href = '/admin/login'; return; }
     try {
       const res = await fetch(`${API}/api/orders/all`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
       if (data.success) {
@@ -81,15 +79,12 @@ export default function AdminPage() {
     return () => clearInterval(interval);
   }, [authChecked]);
 
+  // ── Update order status — no token needed ──
   const updateStatus = async (orderId: string, newStatus: string) => {
-    const token = localStorage.getItem('token');
     try {
       await fetch(`${API}/api/orders/${orderId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
       fetchOrders();
@@ -98,15 +93,12 @@ export default function AdminPage() {
     }
   };
 
+  // ── Reject order — no token needed ──
   const rejectOrder = async (orderId: string) => {
-    const token = localStorage.getItem('token');
     try {
       await fetch(`${API}/api/orders/${orderId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'rejected' })
       });
       fetchOrders();
