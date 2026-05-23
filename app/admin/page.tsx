@@ -56,7 +56,7 @@ export default function AdminPage() {
   // ── Fetch orders ──
   const fetchOrders = async () => {
     const token = localStorage.getItem('token');
-    if (!token) { window.location.href = '/login'; return; }
+    if (!token) { window.location.href = '/admin/login'; return; }
     try {
       const res = await fetch(`${API}/api/orders/all`, {
         headers: { Authorization: `Bearer ${token}` }
