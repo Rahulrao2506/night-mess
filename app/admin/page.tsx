@@ -48,35 +48,28 @@ export default function AdminPage() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(toDateString(new Date()).slice(0, 7));
 
+  // ── Auth check — uses sessionStorage from admin/login ──
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
-    if (!token || !user) {
-      router.push('/login');
+    const admin = sessionStorage.getItem('nm_admin');
+    if (!admin) {
+      router.push('/admin/login');
       return;
     }
-    const parsed = JSON.parse(user);
-    if (parsed.role !== 'admin') {
-      router.push('/');
-      return;
-    }
+    const parsed = JSON.parse(admin);
     setAdminName(parsed.name);
     setAuthChecked(true);
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/login');
+    sessionStorage.removeItem('nm_admin');
+    router.push('/admin/login');
   };
 
+  // ── Fetch orders — no JWT needed for admin ──
   const fetchOrders = async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
-    const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/api/orders/all`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await fetch(`${API}/api/orders/all`);
       const data = await res.json();
       if (data.success) {
         if (data.orders.length > lastCount && lastCount > 0) {
@@ -98,15 +91,12 @@ export default function AdminPage() {
     return () => clearInterval(interval);
   }, [authChecked]);
 
+  // ── Update order status — no JWT needed ──
   const updateStatus = async (orderId: string, newStatus: string) => {
-    const token = localStorage.getItem('token');
     try {
       await fetch(`${API}/api/orders/${orderId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
       fetchOrders();
@@ -116,14 +106,10 @@ export default function AdminPage() {
   };
 
   const rejectOrder = async (orderId: string) => {
-    const token = localStorage.getItem('token');
     try {
       await fetch(`${API}/api/orders/${orderId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'rejected' })
       });
       fetchOrders();
@@ -163,7 +149,6 @@ export default function AdminPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'sans-serif', padding: '20px' }}>
 
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, color: '#ff6b35' }}>🍽️ Admin Dashboard</h1>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -207,14 +192,12 @@ export default function AdminPage() {
         {showCalendar && (
           <div style={{ position: 'absolute' as const, top: '100%', left: 0, marginTop: 8, background: '#1a1a1a', border: '1px solid #333', borderRadius: 16, padding: '16px', zIndex: 200, width: 300, boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <button
-                onClick={() => { const d = new Date(calendarMonth + '-01'); d.setMonth(d.getMonth() - 1); setCalendarMonth(toDateString(d).slice(0,7)); }}
+              <button onClick={() => { const d = new Date(calendarMonth + '-01'); d.setMonth(d.getMonth() - 1); setCalendarMonth(toDateString(d).slice(0,7)); }}
                 style={{ background: '#111', border: '1px solid #333', borderRadius: 8, width: 32, height: 32, color: '#fff', fontSize: 16, cursor: 'pointer' }}>‹</button>
               <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>
                 {new Date(calendarMonth + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
               </span>
-              <button
-                onClick={() => { const d = new Date(calendarMonth + '-01'); d.setMonth(d.getMonth() + 1); const next = toDateString(d).slice(0,7); if (next <= toDateString(new Date()).slice(0,7)) setCalendarMonth(next); }}
+              <button onClick={() => { const d = new Date(calendarMonth + '-01'); d.setMonth(d.getMonth() + 1); const next = toDateString(d).slice(0,7); if (next <= toDateString(new Date()).slice(0,7)) setCalendarMonth(next); }}
                 style={{ background: '#111', border: '1px solid #333', borderRadius: 8, width: 32, height: 32, color: '#fff', fontSize: 16, cursor: 'pointer' }}>›</button>
             </div>
 
@@ -290,7 +273,6 @@ export default function AdminPage() {
       ) : (
         filtered.map(order => (
           <div key={order._id} style={{ background: '#1a1a1a', borderRadius: 16, padding: '16px 20px', marginBottom: 12, border: `1px solid ${order.status === 'pending' ? '#f59e0b44' : '#2a2a2a'}` }}>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div>
                 <span style={{ fontSize: 18, fontWeight: 800, color: '#ff6b35' }}>#{order.tokenNumber}</span>
