@@ -43,7 +43,7 @@ export default function LoginPage() {
       localStorage.setItem('user', JSON.stringify(data.user));
 
       if (data.user.role === 'admin') {
-        router.push('/admin');
+        window.location.href = '/admin?keu=nightmess2024';
       } else {
         router.push('/');
       }
