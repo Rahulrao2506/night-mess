@@ -35,7 +35,7 @@ export default function AdminLogin() {
         role: "admin",
         loginTime: new Date().toISOString(),
       }));
-      router.push("/admin");
+      window.location.href = "/admin";
     } else {
       setError("Invalid username or password");
       setLoading(false);
