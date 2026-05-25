@@ -1,455 +1,138 @@
-"use client";
-import { useState, useEffect, useRef } from "react";
-import { ShoppingCart, Star, Clock, Flame, Search, X, Plus, Minus, Bell, ChevronRight, Zap, TrendingUp } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+'use client';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-const FALLBACK_MENU = [
-  { id: 1, name: "Chicken Biryani", price: 120, rating: 4.8, time: 15, category: "Main Course", popular: true, isAvailable: true, emoji: "🍛" },
-  { id: 2, name: "Paneer Butter Masala", price: 90, rating: 4.6, time: 12, category: "Main Course", popular: true, isAvailable: true, emoji: "🧆" },
-  { id: 3, name: "Veg Fried Rice", price: 70, rating: 4.4, time: 10, category: "Main Course", popular: false, isAvailable: true, emoji: "🍚" },
-  { id: 4, name: "Masala Dosa", price: 60, rating: 4.7, time: 8, category: "Starters", popular: true, isAvailable: true, emoji: "🫓" },
-  { id: 5, name: "Samosa (2pcs)", price: 30, rating: 4.3, time: 5, category: "Snacks", popular: false, isAvailable: true, emoji: "🥟" },
-  { id: 6, name: "Gulab Jamun", price: 40, rating: 4.9, time: 3, category: "Desserts", popular: true, isAvailable: true, emoji: "🍮" },
-  { id: 7, name: "Chole Bhature", price: 80, rating: 4.5, time: 12, category: "Main Course", popular: false, isAvailable: false, emoji: "🫔" },
-  { id: 8, name: "Cold Coffee", price: 50, rating: 4.6, time: 4, category: "Snacks", popular: false, isAvailable: true, emoji: "☕" },
-];
+const API = 'https://night-mess-api.onrender.com';
+const statusColors: Record<string,string> = { pending:'#f59e0b',accepted:'#3b82f6',preparing:'#8b5cf6',ready:'#22c55e',completed:'#666',rejected:'#ef4444' };
+const statusNext: Record<string,string> = { pending:'accepted',accepted:'preparing',preparing:'ready',ready:'completed' };
+const statusLabel: Record<string,string> = { pending:'Accept',accepted:'Start Preparing',preparing:'Mark Ready',ready:'Complete' };
+function toDateString(d:Date){return d.toISOString().split('T')[0];}
+function isSameDay(a:string,b:string){return a.startsWith(b);}
 
-const EMOJI_MAP: Record<string, string> = {
-  "Chicken Biryani": "🍛", "Paneer Butter Masala": "🧆", "Veg Fried Rice": "🍚",
-  "Masala Dosa": "🫓", "Samosa (2pcs)": "🥟", "Gulab Jamun": "🍮",
-  "Chole Bhature": "🫔", "Cold Coffee": "☕", "Dal Makhani": "🫕",
-  "Aloo Paratha": "🫓", "Maggi": "🍜",
-};
+export default function AdminPage() {
+  const router = useRouter();
+  const [adminName,setAdminName]=useState("");
+  const [authChecked,setAuthChecked]=useState(false);
+  const [orders,setOrders]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [filter,setFilter]=useState('all');
+  const [selectedDate,setSelectedDate]=useState(toDateString(new Date()));
+  const [refreshing,setRefreshing]=useState(false);
 
-const CATEGORIES = ["All", "Main Course", "Starters", "Snacks", "Desserts"];
-type MenuItem = { id: number; name: string; price: number; rating: number; time: number; category: string; popular: boolean; isAvailable: boolean; emoji: string; };
-type CartItem = { id: number; name: string; price: number; emoji: string; qty: number };
+  useEffect(()=>{
+    const admin=localStorage.getItem('nm_admin');
+    if(!admin){router.push('/admin/login');return;}
+    setAdminName(JSON.parse(admin).name);
+    setAuthChecked(true);
+  },[router]);
 
-export default function NightMess() {
-  const [category, setCategory] = useState("All");
-  const [search, setSearch] = useState("");
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(FALLBACK_MENU);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [orderPlaced, setOrderPlaced] = useState(false);
-  const [currentTime, setCurrentTime] = useState("");
-  const [user, setUser] = useState<any>(null);
-  const [crowdLevel, setCrowdLevel] = useState<"Low" | "Medium" | "High">("Low");
-  const [waitTime, setWaitTime] = useState(12);
-  const [notifications, setNotifications] = useState<string[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [orderToken, setOrderToken] = useState("");
-  const [removedItems, setRemovedItems] = useState<string[]>([]);
-  const seenOrdersRef = useRef<Set<string>>(new Set());
+  const handleLogout=()=>{localStorage.removeItem('nm_admin');window.location.href='/admin/login';};
 
-  const API = 'https://night-mess-api.onrender.com';
-
-  // Fetch real menu from backend
-  const fetchMenu = async () => {
-    try {
-      const res = await fetch(`${API}/api/menu`);
-      const data = await res.json();
-      if (data.success && data.items.length > 0) {
-        const items = data.items.map((item: any, i: number) => ({
-          id: i + 1,
-          name: item.name,
-          price: item.price,
-          rating: item.rating || 4.5,
-          time: item.prepTime || 10,
-          category: item.category,
-          popular: item.isHot || false,
-          isAvailable: item.isAvailable,
-          emoji: EMOJI_MAP[item.name] || '🍽️'
-        }));
-        setMenuItems(items);
-      }
-    } catch (err) {
-      // Use fallback menu if backend fails
-      setMenuItems(FALLBACK_MENU);
-    }
+  const fetchOrders=async(show=false)=>{
+    if(show)setRefreshing(true);
+    try{
+      const res=await fetch(`${API}/api/orders/all`);
+      const data=await res.json();
+      if(data.success)setOrders(data.orders);
+    }catch(err){}
+    setLoading(false);
+    if(show)setTimeout(()=>setRefreshing(false),600);
   };
 
-  useEffect(() => {
-    fetchMenu();
-    // Re-fetch menu every 30 seconds to get availability updates
-    const interval = setInterval(fetchMenu, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  useEffect(()=>{if(!authChecked)return;fetchOrders();const t=setInterval(fetchOrders,10000);return()=>clearInterval(t);},[authChecked]);
 
-  // Auto-remove unavailable items from cart when menu updates
-  useEffect(() => {
-    const unavailableNames = menuItems
-      .filter(m => !m.isAvailable)
-      .map(m => m.name);
-
-    const removedFromCart = cart.filter(c => unavailableNames.includes(c.name));
-
-    if (removedFromCart.length > 0) {
-      setCart(prev => prev.filter(c => !unavailableNames.includes(c.name)));
-      setRemovedItems(removedFromCart.map(c => c.name));
-      setTimeout(() => setRemovedItems([]), 5000);
-    }
-  }, [menuItems]);
-
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
-      const hour = now.getHours();
-      if ((hour >= 20 && hour <= 22) || (hour >= 7 && hour <= 9)) {
-        setCrowdLevel("High"); setWaitTime(25);
-      } else if ((hour >= 19 && hour < 20) || (hour >= 9 && hour <= 11)) {
-        setCrowdLevel("Medium"); setWaitTime(15);
-      } else {
-        setCrowdLevel("Low"); setWaitTime(8);
-      }
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    const stored = localStorage.getItem('user');
-    if (stored) setUser(JSON.parse(stored));
-    setNotifications([]);
-    seenOrdersRef.current = new Set();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    const checkOrders = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-      try {
-        const res = await fetch(`${API}/api/orders/my`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (data.success && data.orders) {
-          const newNotifs: string[] = [];
-          data.orders.forEach((order: any) => {
-            if (order.status === 'ready' && !seenOrdersRef.current.has(order._id)) {
-              newNotifs.push(`🎉 Token #${order.tokenNumber} is READY for pickup!`);
-              seenOrdersRef.current.add(order._id);
-            }
-          });
-          if (newNotifs.length > 0) setNotifications(prev => [...newNotifs, ...prev]);
-        }
-      } catch (err) {}
-    };
-    setNotifications([]);
-    seenOrdersRef.current = new Set();
-    checkOrders();
-    const interval = setInterval(checkOrders, 10000);
-    return () => clearInterval(interval);
-  }, [user]);
-
-  const filtered = menuItems.filter(item =>
-    (category === "All" || item.category === category) &&
-    item.name.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const addToCart = (item: MenuItem) => {
-    if (!item.isAvailable) return;
-    setCart(prev => {
-      const existing = prev.find(c => c.id === item.id);
-      if (existing) return prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c);
-      return [...prev, { id: item.id, name: item.name, price: item.price, emoji: item.emoji, qty: 1 }];
-    });
+  const updateStatus=async(id:string,status:string)=>{
+    await fetch(`${API}/api/orders/${id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    fetchOrders();
   };
 
-  const removeFromCart = (id: number) => {
-    setCart(prev => {
-      const existing = prev.find(c => c.id === id);
-      if (existing && existing.qty > 1) return prev.map(c => c.id === id ? { ...c, qty: c.qty - 1 } : c);
-      return prev.filter(c => c.id !== id);
-    });
+  const rejectOrder=async(id:string)=>{
+    await fetch(`${API}/api/orders/${id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'rejected'})});
+    fetchOrders();
   };
 
-  const cartTotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const cartCount = cart.reduce((sum, c) => sum + c.qty, 0);
-  const crowdColor = { Low: "#22c55e", Medium: "#f59e0b", High: "#ef4444" }[crowdLevel];
+  const isToday=selectedDate===toDateString(new Date());
+  const ordersForDate=orders.filter(o=>isSameDay(o.createdAt,selectedDate));
+  const filtered=filter==='all'?ordersForDate:ordersForDate.filter(o=>o.status===filter);
+  const revenue=ordersForDate.filter(o=>o.status!=='rejected').reduce((s,o)=>s+(o.totalAmount||0),0);
+  const counts={pending:ordersForDate.filter(o=>o.status==='pending').length,preparing:ordersForDate.filter(o=>o.status==='accepted'||o.status==='preparing').length,ready:ordersForDate.filter(o=>o.status==='ready').length,completed:ordersForDate.filter(o=>o.status==='completed').length};
 
-  const placeOrder = async () => {
-    if (cart.length === 0) return;
-    const token = localStorage.getItem('token');
-    if (!token) { window.location.href = '/login'; return; }
+  if(!authChecked)return<div style={{minHeight:'100vh',background:'#0a0a0a',display:'flex',alignItems:'center',justifyContent:'center',color:'#ff6b35',fontFamily:'sans-serif'}}>Verifying...</div>;
+  if(loading)return<div style={{minHeight:'100vh',background:'#0a0a0a',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff'}}>Loading...</div>;
 
-    // Final check — remove any unavailable items before placing
-    const unavailableNames = menuItems.filter(m => !m.isAvailable).map(m => m.name);
-    const validCart = cart.filter(c => !unavailableNames.includes(c.name));
-    if (validCart.length === 0) {
-      alert('All items in your cart are now unavailable. Please add other items.');
-      setCart([]);
-      return;
-    }
-    if (validCart.length !== cart.length) {
-      setCart(validCart);
-      alert('Some unavailable items were removed from your cart. Please review and try again.');
-      return;
-    }
-
-    try {
-      const items = cart.map(c => ({
-        name: c.name, price: c.price, quantity: c.qty,
-        prepTime: menuItems.find(m => m.id === c.id)?.time || 10
-      }));
-      const res = await fetch(`${API}/api/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ items, totalAmount: cartTotal })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setOrderToken(`#NM${data.order.tokenNumber}`);
-        setOrderPlaced(true);
-        setCart([]);
-        setCartOpen(false);
-        setTimeout(() => setOrderPlaced(false), 5000);
-      } else {
-        alert('Order failed: ' + data.message);
-      }
-    } catch (err) {
-      alert('Network error placing order');
-    }
-  };
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
-
-      <header style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(10,10,10,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ cursor: 'pointer' }} onClick={() => window.location.href = '/'}>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, background: "linear-gradient(135deg, #ff6b35, #ff9a3c)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            🍽️ Night Mess
-          </div>
-          <div style={{ fontSize: 12, color: "#666", marginTop: 1 }}>
-            Welcome back, {user?.name || 'Guest'} 👋
-          </div>
+  return(
+    <div style={{minHeight:'100vh',background:'#0a0a0a',color:'#fff',fontFamily:'sans-serif',padding:'20px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+        <h1 style={{fontSize:24,fontWeight:800,color:'#ff6b35'}}>🍽️ Admin Dashboard</h1>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>fetchOrders(true)} style={{background:'#1a1a1a',border:'1px solid #333',borderRadius:10,padding:'8px 16px',color:refreshing?'#ff6b35':'#888',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            {refreshing?'🔄 Refreshing...':'🔄 Refresh'}
+          </button>
+          <button onClick={handleLogout} style={{background:'#1a0a0a',border:'1px solid #3a1a1a',borderRadius:10,padding:'8px 16px',color:'#ef4444',fontSize:12,fontWeight:700,cursor:'pointer'}}>Logout</button>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontSize: 13, color: "#888", background: "#111", padding: "6px 12px", borderRadius: 20, border: "1px solid #222" }}>{currentTime}</div>
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setShowNotifications(!showNotifications)}
-              style={{ background: "none", border: "none", color: notifications.length > 0 ? "#ff6b35" : "#666", cursor: "pointer", position: 'relative' }}>
-              <Bell size={20} />
-              {notifications.length > 0 && (
-                <span style={{ position: 'absolute', top: -4, right: -4, background: '#ff6b35', borderRadius: '50%', width: 16, height: 16, fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>
-                  {notifications.length}
-                </span>
-              )}
-            </button>
-            {showNotifications && (
-              <div style={{ position: 'absolute', right: 0, top: 32, background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 12, padding: 12, minWidth: 260, zIndex: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#ff6b35', marginBottom: 8 }}>Your Notifications</div>
-                {notifications.length === 0 ? (
-                  <div style={{ fontSize: 12, color: '#666', padding: '8px 0' }}>No notifications yet</div>
-                ) : (
-                  notifications.map((n, i) => (
-                    <div key={i} style={{ fontSize: 12, color: '#fff', padding: '8px 0', borderBottom: i < notifications.length - 1 ? '1px solid #2a2a2a' : 'none' }}>{n}</div>
-                  ))
-                )}
-                {notifications.length > 0 && (
-                  <button onClick={() => { setNotifications([]); seenOrdersRef.current = new Set(); }}
-                    style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer', marginTop: 8 }}>
-                    Clear all
-                  </button>
-                )}
-              </div>
-            )}
+      </div>
+      <p style={{color:'#666',fontSize:13,marginBottom:16}}>Welcome, {adminName} · Auto-refreshes every 10s</p>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center'}}>
+        <span style={{color:'#888',fontSize:13}}>📅</span>
+        <input type="date" value={selectedDate} max={toDateString(new Date())} onChange={e=>setSelectedDate(e.target.value)}
+          style={{background:'#1a1a1a',border:'1px solid #333',borderRadius:10,padding:'8px 12px',color:'#fff',fontSize:13,cursor:'pointer'}}/>
+        {!isToday&&<button onClick={()=>setSelectedDate(toDateString(new Date()))} style={{background:'#ff6b3522',border:'1px solid #ff6b3544',borderRadius:8,padding:'6px 12px',color:'#ff6b35',fontSize:12,fontWeight:600,cursor:'pointer'}}>Today</button>}
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:24}}>
+        {[{label:'Pending',value:counts.pending,color:'#f59e0b'},{label:'Preparing',value:counts.preparing,color:'#8b5cf6'},{label:'Ready',value:counts.ready,color:'#22c55e'},{label:"Revenue",value:`₹${revenue}`,color:'#ff6b35'}].map(s=>(
+          <div key={s.label} style={{background:'#1a1a1a',borderRadius:12,padding:'16px 12px',textAlign:'center',border:'1px solid #2a2a2a'}}>
+            <div style={{fontSize:22,fontWeight:800,color:s.color}}>{s.value}</div>
+            <div style={{fontSize:11,color:'#666',marginTop:4}}>{s.label}</div>
           </div>
-        </div>
-      </header>
+        ))}
+      </div>
 
-      <main style={{ maxWidth: 480, margin: "0 auto", padding: "0 16px 100px" }}>
+      <div style={{display:'flex',gap:8,marginBottom:20,overflowX:'auto' as const}}>
+        {[{key:'all',label:'All',count:ordersForDate.length},{key:'pending',label:'Pending',count:counts.pending},{key:'accepted',label:'Accepted',count:ordersForDate.filter(o=>o.status==='accepted').length},{key:'preparing',label:'Preparing',count:ordersForDate.filter(o=>o.status==='preparing').length},{key:'ready',label:'Ready',count:counts.ready},{key:'completed',label:'Completed',count:counts.completed},{key:'rejected',label:'Rejected',count:ordersForDate.filter(o=>o.status==='rejected').length}].map(f=>(
+          <button key={f.key} onClick={()=>setFilter(f.key)} style={{padding:'8px 14px',borderRadius:20,border:'1px solid',fontSize:12,fontWeight:500,cursor:'pointer',flexShrink:0,background:filter===f.key?'#ff6b35':'transparent',borderColor:filter===f.key?'#ff6b35':'#333',color:filter===f.key?'#fff':'#888'}}>
+            {f.label}{f.count>0?` (${f.count})`:''}
+          </button>
+        ))}
+      </div>
 
-        {/* Removed items warning */}
-        <AnimatePresence>
-          {removedItems.length > 0 && (
-            <motion.div initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}
-              style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", zIndex: 100, background: "#ef4444", color: "#fff", padding: "14px 24px", borderRadius: 16, fontWeight: 600, fontSize: 13, boxShadow: "0 8px 32px rgba(239,68,68,0.4)", whiteSpace: "nowrap" }}>
-              ⚠️ Removed from cart (unavailable): {removedItems.join(', ')}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {orderPlaced && (
-            <motion.div initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}
-              style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", zIndex: 100, background: "#22c55e", color: "#fff", padding: "14px 24px", borderRadius: 16, fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 10, boxShadow: "0 8px 32px rgba(34,197,94,0.4)", whiteSpace: "nowrap" }}>
-              🎉 Order placed! Your token is {orderToken}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* AI Rush Predictor */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          style={{ margin: "20px 0 16px", background: "linear-gradient(135deg, #1a0a00, #2a1200)", border: "1px solid #3a2000", borderRadius: 18, padding: "16px 20px", display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,107,53,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <TrendingUp size={22} color="#ff6b35" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#ff9a3c", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-              <Zap size={12} /> AI Rush Predictor
+      {filtered.length===0?(
+        <div style={{textAlign:'center',color:'#444',padding:'60px 0',fontSize:14}}>No orders found</div>
+      ):filtered.map(order=>(
+        <div key={order._id} style={{background:'#1a1a1a',borderRadius:16,padding:'16px 20px',marginBottom:12,border:`1px solid ${order.status==='pending'?'#f59e0b44':'#2a2a2a'}`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <div>
+              <span style={{fontSize:18,fontWeight:800,color:'#ff6b35'}}>#{order.tokenNumber}</span>
+              <span style={{fontSize:12,color:'#666',marginLeft:10}}>{new Date(order.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>
             </div>
-            <div style={{ fontSize: 12, color: "#888" }}>
-              Crowd level: <span style={{ color: crowdColor, fontWeight: 700 }}>{crowdLevel}</span>
-              <span style={{ margin: "0 8px", color: "#333" }}>|</span>
-              Wait: <span style={{ color: "#fff", fontWeight: 600 }}>~{waitTime} mins</span>
-            </div>
+            <span style={{background:statusColors[order.status]+'22',color:statusColors[order.status],padding:'4px 10px',borderRadius:20,fontSize:11,fontWeight:700,textTransform:'uppercase' as const}}>{order.status}</span>
           </div>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: crowdColor, boxShadow: `0 0 8px ${crowdColor}`, animation: "pulse 2s infinite" }} />
-        </motion.div>
-
-        {/* Search */}
-        <div style={{ position: "relative", marginBottom: 16 }}>
-          <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#555" }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search for food items..."
-            style={{ width: "100%", background: "#111", border: "1px solid #222", borderRadius: 14, padding: "12px 14px 12px 40px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-          {search && <button onClick={() => setSearch("")} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#555", cursor: "pointer" }}><X size={14} /></button>}
-        </div>
-
-        {/* Categories */}
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 20, scrollbarWidth: "none" }}>
-          {CATEGORIES.map(cat => (
-            <button key={cat} onClick={() => setCategory(cat)}
-              style={{ flexShrink: 0, padding: "8px 16px", borderRadius: 20, border: "1px solid", fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "all 0.2s",
-                background: category === cat ? "#ff6b35" : "transparent",
-                borderColor: category === cat ? "#ff6b35" : "#222",
-                color: category === cat ? "#fff" : "#888" }}>
-              {cat}
-            </button>
-          ))}
-        </div>
-
-        {/* Menu Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <AnimatePresence>
-            {filtered.map((item, i) => {
-              const inCart = cart.find(c => c.id === item.id);
-              return (
-                <motion.div key={item.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }}
-                  style={{ background: "#111", border: "1px solid #1a1a1a", borderRadius: 18, overflow: "hidden", position: "relative", opacity: item.isAvailable ? 1 : 0.5 }}>
-                  <div style={{ background: "#161616", height: 90, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 44, position: "relative" }}>
-                    {item.emoji}
-                    {item.popular && item.isAvailable && (
-                      <div style={{ position: "absolute", top: 8, right: 8, background: "#ff6b35", borderRadius: 8, padding: "2px 8px", fontSize: 10, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 3 }}>
-                        <Flame size={8} /> HOT
-                      </div>
-                    )}
-                    {!item.isAvailable && (
-                      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#ef4444" }}>OUT OF STOCK</div>
-                    )}
-                  </div>
-                  <div style={{ padding: "12px 12px 14px" }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, lineHeight: 1.3 }}>{item.name}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "#f59e0b" }}>
-                        <Star size={10} fill="#f59e0b" /> {item.rating}
-                      </span>
-                      <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "#666" }}>
-                        <Clock size={10} /> {item.time}m
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: "#ff9a3c" }}>₹{item.price}</span>
-                      {item.isAvailable && (
-                        inCart ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#1a1a1a", borderRadius: 10, padding: "4px 8px" }}>
-                            <button onClick={() => removeFromCart(item.id)} style={{ background: "none", border: "none", color: "#ff6b35", cursor: "pointer", display: "flex" }}><Minus size={12} /></button>
-                            <span style={{ fontSize: 13, fontWeight: 700, minWidth: 16, textAlign: "center" }}>{inCart.qty}</span>
-                            <button onClick={() => addToCart(item)} style={{ background: "none", border: "none", color: "#ff6b35", cursor: "pointer", display: "flex" }}><Plus size={12} /></button>
-                          </div>
-                        ) : (
-                          <button onClick={() => addToCart(item)}
-                            style={{ background: "#ff6b35", border: "none", borderRadius: 10, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff" }}>
-                            <Plus size={14} />
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
-
-        {filtered.length === 0 && (
-          <div style={{ textAlign: "center", color: "#444", padding: "60px 0", fontSize: 14 }}>
-            No items found for "{search}"
+          <div style={{fontSize:12,color:'#888',marginBottom:10}}>👤 {order.student?.name||'Student'} • {order.student?.rollNumber||order.student?.email||''}</div>
+          <div style={{marginBottom:12}}>
+            {order.items?.map((item:any,i:number)=>(
+              <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#ccc',marginBottom:4}}>
+                <span>{item.name} × {item.quantity}</span><span>₹{item.price*item.quantity}</span>
+              </div>
+            ))}
           </div>
-        )}
-      </main>
-
-      {/* Floating Cart Button */}
-      <AnimatePresence>
-        {cartCount > 0 && (
-          <motion.button initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
-            onClick={() => setCartOpen(true)}
-            style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg, #ff6b35, #ff9a3c)", border: "none", borderRadius: 20, padding: "14px 28px", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 8px 32px rgba(255,107,53,0.5)", zIndex: 40, whiteSpace: "nowrap" }}>
-            <ShoppingCart size={18} />
-            {cartCount} item{cartCount > 1 ? "s" : ""} · ₹{cartTotal}
-            <ChevronRight size={16} />
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      {/* Cart Drawer */}
-      <AnimatePresence>
-        {cartOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setCartOpen(false)}
-              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 50, backdropFilter: "blur(4px)" }} />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#111", borderRadius: "24px 24px 0 0", zIndex: 60, padding: "24px 20px 40px", maxHeight: "80vh", overflowY: "auto" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800 }}>Your Order</div>
-                <button onClick={() => setCartOpen(false)} style={{ background: "#1a1a1a", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#888" }}><X size={16} /></button>
-              </div>
-
-              {cart.map(item => (
-                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, background: "#161616", borderRadius: 14, padding: "12px 14px" }}>
-                  <span style={{ fontSize: 28 }}>{item.emoji}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{item.name}</div>
-                    <div style={{ fontSize: 12, color: "#ff9a3c", marginTop: 2 }}>₹{item.price} each</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <button onClick={() => removeFromCart(item.id)} style={{ background: "#222", border: "none", borderRadius: 8, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#ff6b35" }}><Minus size={12} /></button>
-                    <span style={{ fontSize: 14, fontWeight: 700, minWidth: 20, textAlign: "center" }}>{item.qty}</span>
-                    <button onClick={() => addToCart(menuItems.find(m => m.id === item.id)!)} style={{ background: "#ff6b35", border: "none", borderRadius: 8, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff" }}><Plus size={12} /></button>
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, minWidth: 50, textAlign: "right" }}>₹{item.price * item.qty}</div>
-                </div>
-              ))}
-
-              <div style={{ borderTop: "1px solid #1a1a1a", marginTop: 8, paddingTop: 16, marginBottom: 20 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#888", marginBottom: 8 }}>
-                  <span>Subtotal</span><span>₹{cartTotal}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700 }}>
-                  <span>Total</span><span style={{ color: "#ff9a3c" }}>₹{cartTotal}</span>
-                </div>
-              </div>
-
-              <button onClick={placeOrder}
-                style={{ width: "100%", background: "linear-gradient(135deg, #ff6b35, #ff9a3c)", border: "none", borderRadius: 16, padding: "16px", color: "#fff", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                Place Order · ₹{cartTotal} <ChevronRight size={18} />
+          <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid #2a2a2a',paddingTop:10,marginBottom:14}}>
+            <span style={{fontSize:13,color:'#888'}}>Total</span>
+            <span style={{fontSize:15,fontWeight:800,color:'#ff9a3c'}}>₹{order.totalAmount}</span>
+          </div>
+          {isToday&&order.status!=='completed'&&order.status!=='rejected'&&(
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>updateStatus(order._id,statusNext[order.status])} style={{flex:1,padding:'10px',background:'#ff6b35',border:'none',borderRadius:10,color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                ✅ {statusLabel[order.status]}
               </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      <style>{`
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        ::-webkit-scrollbar { display: none; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        input::placeholder { color: #444; }
-      `}</style>
+              {order.status==='pending'&&(
+                <button onClick={()=>rejectOrder(order._id)} style={{padding:'10px 16px',background:'#1a1a1a',border:'1px solid #ef4444',borderRadius:10,color:'#ef4444',fontWeight:700,fontSize:13,cursor:'pointer'}}>❌ Reject</button>
+              )}
+            </div>
+          )}
+          {!isToday&&<div style={{fontSize:11,color:'#444',textAlign:'center',padding:'6px',background:'#111',borderRadius:8}}>Past order — view only</div>}
+        </div>
+      ))}
     </div>
   );
 }
