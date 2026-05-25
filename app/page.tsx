@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ShoppingCart, Star, Clock, Flame, Search, X, Plus, Minus, Bell, ChevronRight, Zap, TrendingUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -15,7 +15,6 @@ const MENU_ITEMS = [
 ];
 
 const CATEGORIES = ["All", "Main Course", "Starters", "Snacks", "Desserts"];
-
 type CartItem = { id: number; name: string; price: number; emoji: string; qty: number };
 
 export default function NightMess() {
@@ -31,7 +30,7 @@ export default function NightMess() {
   const [notifications, setNotifications] = useState<string[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [orderToken, setOrderToken] = useState("");
-  const [seenOrders, setSeenOrders] = useState<Set<string>>(new Set());
+  const seenOrdersRef = useRef<Set<string>>(new Set());
 
   const API = 'https://night-mess-api.onrender.com';
 
@@ -41,14 +40,11 @@ export default function NightMess() {
       setCurrentTime(now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
       const hour = now.getHours();
       if ((hour >= 20 && hour <= 22) || (hour >= 7 && hour <= 9)) {
-        setCrowdLevel("High");
-        setWaitTime(25);
+        setCrowdLevel("High"); setWaitTime(25);
       } else if ((hour >= 19 && hour < 20) || (hour >= 9 && hour <= 11)) {
-        setCrowdLevel("Medium");
-        setWaitTime(15);
+        setCrowdLevel("Medium"); setWaitTime(15);
       } else {
-        setCrowdLevel("Low");
-        setWaitTime(8);
+        setCrowdLevel("Low"); setWaitTime(8);
       }
     };
     tick();
@@ -58,25 +54,18 @@ export default function NightMess() {
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
-    if (stored) {
-      setUser(JSON.parse(stored));
-    }
-    // Clear notifications when user changes
+    if (stored) setUser(JSON.parse(stored));
     setNotifications([]);
-    setSeenOrders(new Set());
+    seenOrdersRef.current = new Set();
   }, []);
 
-  // Poll for THIS user's order notifications only
+  // Notification polling — uses ref so no stale closure
   useEffect(() => {
     if (!user) return;
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    // Clear everything when user changes
-    setNotifications([]);
-    setSeenOrders(new Set());
 
     const checkOrders = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
       try {
         const res = await fetch(`${API}/api/orders/my`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -84,29 +73,26 @@ export default function NightMess() {
         const data = await res.json();
         if (data.success && data.orders) {
           const newNotifs: string[] = [];
-          const newSeen = new Set(seenOrders);
-
           data.orders.forEach((order: any) => {
-            // Only notify for ready orders not already seen
-            if (order.status === 'ready' && !seenOrders.has(order._id)) {
+            if (order.status === 'ready' && !seenOrdersRef.current.has(order._id)) {
               newNotifs.push(`🎉 Token #${order.tokenNumber} is READY for pickup!`);
-              newSeen.add(order._id);
+              seenOrdersRef.current.add(order._id);
             }
           });
-
           if (newNotifs.length > 0) {
-            setSeenOrders(newSeen);
             setNotifications(prev => [...newNotifs, ...prev]);
           }
         }
       } catch (err) {}
     };
 
+    // Reset on user change
+    setNotifications([]);
+    seenOrdersRef.current = new Set();
+
     checkOrders();
-    const interval = setInterval(checkOrders, 15000);
-    return () => {
-      clearInterval(interval);
-    };
+    const interval = setInterval(checkOrders, 10000);
+    return () => clearInterval(interval);
   }, [user]);
 
   const filtered = MENU_ITEMS.filter(item =>
@@ -139,26 +125,17 @@ export default function NightMess() {
     if (cart.length === 0) return;
     const token = localStorage.getItem('token');
     if (!token) { window.location.href = '/login'; return; }
-
     try {
       const items = cart.map(c => ({
-        name: c.name,
-        price: c.price,
-        quantity: c.qty,
+        name: c.name, price: c.price, quantity: c.qty,
         prepTime: MENU_ITEMS.find(m => m.id === c.id)?.time || 10
       }));
-
       const res = await fetch(`${API}/api/orders`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ items, totalAmount: cartTotal })
       });
-
       const data = await res.json();
-
       if (data.success) {
         setOrderToken(`#NM${data.order.tokenNumber}`);
         setOrderPlaced(true);
@@ -189,52 +166,31 @@ export default function NightMess() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ fontSize: 13, color: "#888", background: "#111", padding: "6px 12px", borderRadius: 20, border: "1px solid #222" }}>{currentTime}</div>
 
-          {/* Notification Bell */}
           <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
+            <button onClick={() => setShowNotifications(!showNotifications)}
               style={{ background: "none", border: "none", color: notifications.length > 0 ? "#ff6b35" : "#666", cursor: "pointer", position: 'relative' }}>
               <Bell size={20} />
               {notifications.length > 0 && (
-                <span style={{
-                  position: 'absolute', top: -4, right: -4,
-                  background: '#ff6b35', borderRadius: '50%',
-                  width: 16, height: 16, fontSize: 10,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'white', fontWeight: 'bold'
-                }}>
+                <span style={{ position: 'absolute', top: -4, right: -4, background: '#ff6b35', borderRadius: '50%', width: 16, height: 16, fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>
                   {notifications.length}
                 </span>
               )}
             </button>
 
             {showNotifications && (
-              <div style={{
-                position: 'absolute', right: 0, top: 32,
-                background: '#1a1a1a', border: '1px solid #2a2a2a',
-                borderRadius: 12, padding: 12, minWidth: 260,
-                zIndex: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#ff6b35', marginBottom: 8 }}>
-                  Your Notifications
-                </div>
+              <div style={{ position: 'absolute', right: 0, top: 32, background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 12, padding: 12, minWidth: 260, zIndex: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#ff6b35', marginBottom: 8 }}>Your Notifications</div>
                 {notifications.length === 0 ? (
-                  <div style={{ fontSize: 12, color: '#666', padding: '8px 0' }}>
-                    No notifications yet
-                  </div>
+                  <div style={{ fontSize: 12, color: '#666', padding: '8px 0' }}>No notifications yet</div>
                 ) : (
                   notifications.map((n, i) => (
-                    <div key={i} style={{
-                      fontSize: 12, color: '#fff', padding: '8px 0',
-                      borderBottom: i < notifications.length - 1 ? '1px solid #2a2a2a' : 'none'
-                    }}>
+                    <div key={i} style={{ fontSize: 12, color: '#fff', padding: '8px 0', borderBottom: i < notifications.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
                       {n}
                     </div>
                   ))
                 )}
                 {notifications.length > 0 && (
-                  <button
-                    onClick={() => { setNotifications([]); setSeenOrders(new Set()); }}
+                  <button onClick={() => { setNotifications([]); seenOrdersRef.current = new Set(); }}
                     style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer', marginTop: 8 }}>
                     Clear all
                   </button>
@@ -246,7 +202,6 @@ export default function NightMess() {
       </header>
 
       <main style={{ maxWidth: 480, margin: "0 auto", padding: "0 16px 100px" }}>
-
         <AnimatePresence>
           {orderPlaced && (
             <motion.div initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}
